@@ -1,0 +1,50 @@
+#!/usr/bin/env bb
+
+; :bbin/start
+;
+; {:coords
+;  {:bbin/url "file:///Users/teodorlu/dev/teodorlu/bbin-testdata/fail1"}}
+;
+; :bbin/end
+
+(require '[babashka.process :as process]
+         '[babashka.fs :as fs]
+         '[clojure.string :as str])
+
+(def script-root "/Users/teodorlu/dev/teodorlu/bbin-testdata/fail1")
+(def script-main-opts-first "-m")
+(def script-main-opts-second "fail1/-main")
+
+(def tmp-edn
+  (doto (fs/file (fs/temp-dir) (str (gensym "bbin")))
+    (spit (str "{:deps {local/deps {:local/root " (pr-str script-root) "}}}"))
+    (fs/delete-on-exit)))
+
+(def base-command
+  ["bb" "--deps-root" script-root "--config" (str tmp-edn)
+   script-main-opts-first script-main-opts-second
+   "--"])
+
+;; (println "tmp-edn:")
+;; (println (slurp tmp-edn))
+
+;; (println)
+;; (println "base-command:")
+;; (prn base-command)
+
+(def script-deps-file
+  (cond (fs/exists? (fs/file script-root "deps.edn"))
+        (fs/file (fs/file script-root "deps.edn"))
+
+        (fs/exists? (fs/file script-root "bb.edn"))
+        (fs/file (fs/file script-root "bb.edn"))
+
+        :else nil))
+
+(def new-base-command
+  (when script-deps-file
+    ["bb" "--config" (str script-deps-file)
+     script-main-opts-first script-main-opts-second
+     "--"]))
+
+(process/exec (into (or new-base-command base-command) *command-line-args*))
