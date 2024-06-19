@@ -335,8 +335,6 @@ Here's what happens when `"src"` is _not_ set to be on `:paths` in bb.edn:
 ``` shell
 $ pwd
 /Users/teodorlu
-$ pwd
-/Users/teodorlu
 $ SCRIPT_DIR=/Users/teodorlu/dev/teodorlu/bbin-testdata/fail1
 $ cat $SCRIPT_DIR/bb.edn
 {:bbin/bin {fail1 {:main-opts ["-m" "fail1/-main"]}}}
