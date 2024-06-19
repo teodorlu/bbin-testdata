@@ -1,4 +1,4 @@
-# `fail1`: a minimal bbin-compatible script
+# `fail1`: what happens in https://github.com/babashka/bbin/issues/78 ?
 
 This folder reproduces a known limitation in `babashka/bbin` per 2024-06-19:
 
