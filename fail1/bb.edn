@@ -1,1 +1,2 @@
-{:bbin/bin {fail1 {:main-opts ["-m" "fail1/-main"]}}}
+{:paths ["src"]
+ :bbin/bin {fail1 {:main-opts ["-m" "fail1/-main"]}}}
