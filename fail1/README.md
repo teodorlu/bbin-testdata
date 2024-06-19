@@ -145,11 +145,9 @@ Error building classpath. Manifest file not found for local/deps in coordinate #
 [... crash as above ...]
 ```
 
-## Alternatives
+## Can bb be run with different arguments?
 
-### Can bb be run without requiring a `deps.edn` file?
-
-Here's `bb --help`:
+Perhaps there's a clue about what can be done in `bb --help`.
 
 ``` shell
 $ bb --help
@@ -230,3 +228,140 @@ Remaining arguments are bound to *command-line-args*.
 Use -- to separate script command line args from bb command line args.
 When no eval opts or subcommand is provided, the implicit subcommand is repl.
 ```
+
+## Trying to set `--config` directly
+
+Do we need *both* a temporary deps-root and the script's own deps root?
+
+Let's try directly modifying the script shim to make this work.
+This is the new complete shim:
+
+``` clojure
+#!/usr/bin/env bb
+
+; :bbin/start
+;
+; {:coords
+;  {:bbin/url "file:///Users/teodorlu/dev/teodorlu/bbin-testdata/fail1"}}
+;
+; :bbin/end
+
+(require '[babashka.process :as process]
+         '[babashka.fs :as fs]
+         '[clojure.string :as str])
+
+(def script-root "/Users/teodorlu/dev/teodorlu/bbin-testdata/fail1")
+(def script-main-opts-first "-m")
+(def script-main-opts-second "fail1/-main")
+
+(def tmp-edn
+  (doto (fs/file (fs/temp-dir) (str (gensym "bbin")))
+    (spit (str "{:deps {local/deps {:local/root " (pr-str script-root) "}}}"))
+    (fs/delete-on-exit)))
+
+(def base-command
+  ["bb" "--deps-root" script-root "--config" (str tmp-edn)
+   script-main-opts-first script-main-opts-second
+   "--"])
+
+;; (println "tmp-edn:")
+;; (println (slurp tmp-edn))
+
+;; (println)
+;; (println "base-command:")
+;; (prn base-command)
+
+(def script-deps-file
+  (cond (fs/exists? (fs/file script-root "deps.edn"))
+        (fs/file (fs/file script-root "deps.edn"))
+
+        (fs/exists? (fs/file script-root "bb.edn"))
+        (fs/file (fs/file script-root "bb.edn"))
+
+        :else nil))
+
+(def new-base-command
+  (when script-deps-file
+    ["bb" "--config" (str script-deps-file)
+     script-main-opts-first script-main-opts-second
+     "--"]))
+
+(process/exec (into (or new-base-command base-command) *command-line-args*))
+```
+
+### Results
+
+Running the shim above complains about the classpath:
+
+``` shell
+$ fail1
+----- Error --------------------------------------------------------------------
+Type:     java.io.FileNotFoundException
+Message:  Could not locate fail1.bb, fail1.clj or fail1.cljc on classpath.
+Location: <expr>:1:10
+
+----- Context ------------------------------------------------------------------
+1: (ns user (:require [fail1])) (apply fail1/-main *command-line-args*)
+            ^--- Could not locate fail1.bb, fail1.clj or fail1.cljc on classpath.
+
+----- Stack trace --------------------------------------------------------------
+babashka.main/exec/fn--32736/load-fn--32747 - <built-in>
+user                                        - <expr>:1:10
+```
+
+We never set `"src"` to be on the classpath in the `bb.edn` file in this folder:
+
+``` shell
+$ cat bb.edn 
+{:bbin/bin {small1 {:main-opts ["-m" "small/-main"]}}}
+```
+
+If we set `:paths ["src"]` explicitly in `bb.edn`, we get better results:
+
+``` shell
+$ cat bb.edn 
+{:paths ["src"]
+ :bbin/bin {fail1 {:main-opts ["-m" "fail1/-main"]}}}
+$ fail1
+{:script "fail1", :args nil}
+```
+
+## Question for @borkdude: should classpath be inferred for `bb --config some-deps-edn-or-bb-edn-file`?
+
+Given that a user has a `bb.edn` file without set `:paths`, should `"src"` on the classpath be inferred?
+
+Here's what happens when `"src"` is _not_ set to be on `:paths` in bb.edn:
+
+``` shell
+$ pwd
+/Users/teodorlu
+$ pwd
+/Users/teodorlu
+$ SCRIPT_DIR=/Users/teodorlu/dev/teodorlu/bbin-testdata/fail1
+$ cat $SCRIPT_DIR/bb.edn
+{:bbin/bin {fail1 {:main-opts ["-m" "fail1/-main"]}}}
+$ bb --config "$SCRIPT_DIR/bb.edn" -m fail1/-main
+----- Error --------------------------------------------------------------------
+Type:     java.io.FileNotFoundException
+Message:  Could not locate fail1.bb, fail1.clj or fail1.cljc on classpath.
+Location: <expr>:1:10
+
+----- Context ------------------------------------------------------------------
+1: (ns user (:require [fail1])) (apply fail1/-main *command-line-args*)
+            ^--- Could not locate fail1.bb, fail1.clj or fail1.cljc on classpath.
+
+----- Stack trace --------------------------------------------------------------
+babashka.main/exec/fn--32736/load-fn--32747 - <built-in>
+user                                        - <expr>:1:10
+```
+
+If we modify `bb.edn` to have `:paths ["src"]`, the classpath includes our script:
+
+``` shell
+$ cat $SCRIPT_DIR/bb.edn                         
+{:paths ["src"]
+ :bbin/bin {fail1 {:main-opts ["-m" "fail1/-main"]}}}
+$ bb --config "$SCRIPT_DIR/bb.edn" -m fail1/-main
+{:script "fail1", :args nil}
+```
+
