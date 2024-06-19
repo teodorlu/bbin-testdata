@@ -1,1 +1,1 @@
-{bbin/bin {small1 {:main-opts ["-m" "small/-main"]}}}
+{:bbin/bin {small1 {:main-opts ["-m" "small/-main"]}}}

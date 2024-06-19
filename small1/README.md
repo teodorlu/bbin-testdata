@@ -7,3 +7,4 @@ Installation:
 Usage:
 
     $ small1
+    {:script "small!", :args ("a" "b")}
